@@ -1,0 +1,7 @@
+### Gradle template
+.gradle
+!gradle-wrapper.jar
+
+**/build/
+.gradletasknamecache
+.idea
