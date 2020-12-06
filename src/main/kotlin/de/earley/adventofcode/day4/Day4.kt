@@ -1,5 +1,7 @@
 package de.earley.adventofcode.day4
 
+import de.earley.adventofcode.split
+
 fun main() {
     val input = object {}.javaClass.getResourceAsStream("input.txt").bufferedReader()
         .readLines()
@@ -21,23 +23,6 @@ private fun parseInput(lines : List<String>) : List<Passport> =
 
 private fun parsePassport(data : String) : Passport =
     data.split(spaceRegex).map { it.split(":", limit = 2) }.associate { it[0] to it[1] }
-
-/**
- * Split a list into lists of lists indicated by the [splitOn] predicate.
- * The item split on is not in the output.
- *
- * Example: listOf(1, 2, 3, 0, 5).split { it == 0 } == listOf(listOf(1, 2, 3), listOf(5))
- */
-private fun <A> List<A>.split(splitOn : (A) -> Boolean) : List<List<A>> = fold(emptyList<List<A>>() to emptyList<A>()) { (acc, curAcc), cur ->
-    if (splitOn(cur)) {
-        (acc.addElement(curAcc)) to emptyList()
-    } else {
-        acc to (curAcc + cur)
-    }
-}.let { (a, b) -> a.addElement(b) }
-
-// see https://youtrack.jetbrains.com/issue/KT-9992 why a + b does not work
-private fun <A> List<List<A>>.addElement(l : List<A>) : List<List<A>> = toMutableList().apply { add(l) }
 
 private val requiredFields = listOf("byr", "iyr", "eyr", "hgt", "hcl", "ecl", "pid")
 private fun partOneValid(passport: Passport) : Boolean =
