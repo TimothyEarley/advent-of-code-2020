@@ -1,5 +1,7 @@
 package de.earley.adventofcode.day1
 
+import de.earley.adventofcode.findSumToOrNull
+
 fun main() {
     val input = object {}.javaClass.getResourceAsStream("input.txt").bufferedReader()
 
@@ -17,38 +19,6 @@ fun main() {
 private fun solvePartOne(sorted: List<Int>): Int {
     val (a, b) = sorted.findSumToOrNull(2020) ?: throw Exception("No solution!")
     return a * b
-}
-
-/**
- * The list needs to be sorted.
- * Starts at the first (smallest) and last (highest) element.
- * If that sum is too low it can only be increased by increasing the smaller index.
- * If it is too high decrement the high index.
- */
-private fun List<Int>.findSumToOrNull(sum: Int): Pair<Int, Int>? {
-    var low = 0
-    var high = lastIndex
-
-    while (low < high) {
-        // try this sum
-        val l = get(low)
-        val h = get(high)
-        val thisSum = l + h
-        when {
-            thisSum < sum -> {
-                // need to be bigger
-                low++
-            }
-            thisSum == sum -> return l to h
-            thisSum > sum -> {
-                // need to be smaller
-                high--
-            }
-        }
-    }
-
-    // we have not found any match
-    return null
 }
 
 /**
