@@ -74,3 +74,11 @@ operator fun <N : Number> N.compareTo(other: N): Int {
         else      -> throw RuntimeException("Unknown numeric type")
     }
 }
+
+fun <T> Iterable<T>.sumByLong(f: (T) -> Long): Long {
+    var sum : Long = 0
+    for (e in this) {
+        sum += f(e)
+    }
+    return sum
+}
