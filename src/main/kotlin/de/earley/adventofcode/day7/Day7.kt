@@ -21,7 +21,7 @@ private data class Rule(
 
 private object RuleGrammar {
     val bagColour: Parser<BagColour> =
-        (anyWord() + space() + anyWord()).map { it.first + " " + it.second }
+        (anyWord() + space() + anyWord()).map { a, b -> "$a $b" }
     val noMoreBags: Parser<Map<BagColour, Int>> = string("no other bags.").map { emptyMap() }
     val moreBags: Parser<Map<BagColour, Int>> = many(number() + space() + bagColour + space() + oneOf("bags", "bag"), delimiter = string(", ")).map {
          it.associate { (a, _) -> a.second to a.first }

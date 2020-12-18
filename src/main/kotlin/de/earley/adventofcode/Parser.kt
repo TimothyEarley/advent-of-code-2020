@@ -65,9 +65,31 @@ operator fun <B> Parser<Unit>.plus(other: Parser<B>): Parser<B> = {
     }
 }
 
+@JvmName("unitPlusUnit")
+operator fun Parser<Unit>.plus(other: Parser<Unit>): Parser<Unit> = {
+    when (val result = this.this@plus()) {
+        is ParseResult.Ok -> result.state.other()
+        is ParseResult.Error -> result
+    }
+}
+
 inline fun <A, B> Parser<A>.map(crossinline f: (A) -> B): Parser<B> = {
     when (val result = this.this@map()) {
         is ParseResult.Ok -> ParseResult.Ok(f(result.value), result.state)
+        is ParseResult.Error -> result
+    }
+}
+
+inline fun <A, B, C> Parser<Pair<A, B>>.map(crossinline f: (A, B) -> C): Parser<C> = {
+    when (val result = this.this@map()) {
+        is ParseResult.Ok -> ParseResult.Ok(f(result.value.first, result.value.second), result.state)
+        is ParseResult.Error -> result
+    }
+}
+
+inline fun <A, B, C, D> Parser<Pair<Pair<A, B>, C>>.map(crossinline f: (A, B, C) -> D): Parser<D> = {
+    when (val result = this.this@map()) {
+        is ParseResult.Ok -> ParseResult.Ok(f(result.value.first.first, result.value.first.second, result.value.second), result.state)
         is ParseResult.Error -> result
     }
 }
@@ -104,6 +126,9 @@ fun <T> maybe(p: Parser<T>): Parser<T?> = {
 }
 
 fun <T> lazy(p: () -> Parser<T>): Parser<T> = { p()() }
+fun <T> rec(f : (self : Parser<T>) -> Parser<T>) : Parser<T> = lazy {
+    f(rec(f))
+}
 
 fun <T> many(p: Parser<T>, delimiter: Parser<Any?> = empty()): Parser<List<T>> = lazy {
     (p + maybe(delimiter + many(p, delimiter))).map { (t, rest) ->
@@ -128,3 +153,5 @@ fun number(): Parser<Int> = {
         else -> ParseResult.Ok(numString.toInt(), state)
     }
 }
+
+val ws : Parser<Unit> = many(space()).map {  }
