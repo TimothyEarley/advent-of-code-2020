@@ -135,12 +135,12 @@ fun <T> many(p: Parser<T>, delimiter: Parser<Any?> = empty()): Parser<List<T>> =
         if (rest == null) {
             listOf(t)
         } else {
-            rest.second + t
+            listOf(t) + rest.second
         }
     }
 } or empty().map { emptyList() }
 
-fun number(): Parser<Int> = {
+val number: Parser<Int> = {
     var numString = ""
     var state = this
     while (!state.isDone() && state.currentChar.isDigit()) {
@@ -148,10 +148,18 @@ fun number(): Parser<Int> = {
         state = state.next()
     }
     when {
-        state.isDone() -> ParseResult.Error("Expected a digit but input is done")
+        state.isDone() && numString.isEmpty() -> ParseResult.Error("Expected a digit but input is done")
         numString.isEmpty() -> ParseResult.Error("Expected a digit but found ${state.currentChar} at $state")
         else -> ParseResult.Ok(numString.toInt(), state)
     }
 }
 
 val ws : Parser<Unit> = many(space()).map {  }
+
+val letter : Parser<Char> = {
+    when {
+        isDone() -> ParseResult.Error("Expected a letter, but input is done.")
+        currentChar.isLetter() -> ParseResult.Ok(currentChar, next())
+        else -> ParseResult.Error("Expected a letter, but got '$currentChar' at $this")
+    }
+}

@@ -25,7 +25,7 @@ private data class BinOp(val left: Expr, val op: Op, val right: Expr) : Expr() {
 }
 
 private object Grammar {
-    private val numExpr: Parser<Expr> = number().map(::NumExpr)
+    private val numExpr: Parser<Expr> = number.map(::NumExpr)
     private fun parenExpr(e: Parser<Expr>): Parser<Expr> = char('(').void() + ws + e + ws + char(')').void()
     private val add: Parser<Op> = char('+').map { Op.ADD }
     private val mult: Parser<Op> = char('*').map { Op.MULTIPLY }
@@ -36,7 +36,7 @@ private object Grammar {
     // no precedence
     private val expr: Parser<Expr> = rec { expr ->
         (factor(expr) + ws + many(op + ws + factor(expr) + ws)).map { left, rights ->
-            rights.foldRight(left) { cur, acc ->
+            rights.fold(left) { acc, cur ->
                 BinOp(acc, cur.first, cur.second)
             }
         }
@@ -47,14 +47,14 @@ private object Grammar {
     // with precedence
     private val term: Parser<Expr> = lazy {
         (factor(exprPrecedence) + ws + many(add + ws + factor(exprPrecedence) + ws)).map { left, rights ->
-            rights.foldRight(left) { cur, acc ->
+            rights.fold(left) { acc, cur ->
                 BinOp(acc, cur.first, cur.second)
             }
         }
     }
 
     private val exprPrecedence: Parser<Expr> = (term + ws + many(mult + ws + term + ws)).map { left, rights ->
-        rights.foldRight(left) { cur, acc ->
+        rights.fold(left) { acc, cur ->
             BinOp(acc, cur.first, cur.second)
         }
     }
