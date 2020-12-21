@@ -108,7 +108,10 @@ fun anyWord(): Parser<String> = {
         word += state.currentChar
         state = state.next()
     }
-    ParseResult.Ok(word, state)
+    if (word.isBlank()) {
+        ParseResult.Error("Expected a word, got $currentChar")
+    }
+    else ParseResult.Ok(word, state)
 }
 
 infix fun <A> Parser<A>.or(other: Parser<A>): Parser<A> = {
