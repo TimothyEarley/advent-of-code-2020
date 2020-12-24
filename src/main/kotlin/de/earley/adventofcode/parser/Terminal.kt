@@ -16,6 +16,15 @@ class Terminal<I>(val name: String, val check: (I) -> Boolean) : Parser<I, I> {
 }
 
 fun char(c : Char) : Parser<Char, Char> = Terminal(c.toString()) { it == c }
+
+//TODO CLEANUP
+fun string(s : String) : Parser<Char, String> =
+    (s.drop(1).fold(
+        char(s.first()).map { listOf(it) }
+    ) { a, b ->
+        (a + char(b)).map { x, y -> x + y }
+    }).map { it.joinToString("") }
+
 val letter : Parser<Char, Char> = Terminal("letter") { it.isLetter() }
 val digit : Parser<Char, Char> = Terminal("digit") { it.isDigit() }
 val number : Parser<Char, Int> = many(digit).filter("non empty") { it.isNotEmpty() }.map {
