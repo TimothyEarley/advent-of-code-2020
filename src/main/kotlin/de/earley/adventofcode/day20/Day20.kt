@@ -1,6 +1,7 @@
 package de.earley.adventofcode.day20
 
 import de.earley.adventofcode.split
+import kotlin.collections.map
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
@@ -13,28 +14,20 @@ fun main() {
     val images = imageBlocks.map {
         val (id) = regex.matchEntire(it.first())!!.destructured
         val data = it.drop(1).map { it.toList() }
-        Image(id.toInt(), data)
+        Image(id.toInt(), Grid(data.first().size, data.size, data.flatten()))
     }
 
     val assembled = assembleImage(images)
-
-    val test = images.first()
-
-    require(
-        test.toTransformed().flip().rotate(2).applyTransform().image ==
-                test.image.flip().rotate(2)
-    )
-
 
     println("Part one: ${partOne(assembled)}")
     println("Part two: ${partTwo(assembled, """
         |                  # 
         |#    ##    ##    ###
-        |#  #  #  #  #  #   
+        | #  #  #  #  #  #   
     """.trimMargin())}")
 }
 
-private typealias ImageData = List<List<Char>>
+private typealias ImageData = Grid<Char>
 
 private data class Image(
     val id: Int,
@@ -69,13 +62,13 @@ private data class TransformedImage(
 private fun Image.toTransformed(): TransformedImage = TransformedImage(
     id,
     this,
-    image.size, // square
+    image.width,
     false,
     0,
-    image.first().toInt(),
-    image.map { it.last() }.toInt(),
-    image.last().toInt(),
-    image.map { it.first() }.toInt()
+    image.topRow().toInt(),
+    image.rightCol().toInt(),
+    image.botRow().toInt(),
+    image.leftCol().toInt()
 )
 
 private fun List<Char>.toInt(): Int = joinToString("") {
@@ -90,7 +83,7 @@ private fun List<Char>.toInt(): Int = joinToString("") {
 private fun TransformedImage.rotate(count: Int): TransformedImage {
     if (count == 0) return this
     val base = rotate(count - 1)
-    // reverse thos where we switch orientaion (numbers are read from left to right, top to bottom,
+    // reverse those where we switch orientation (numbers are read from left to right, top to bottom,
     // so a change between those two is fine, but no other change)
     return TransformedImage(
         id,
@@ -122,42 +115,28 @@ private fun TransformedImage.flip(): TransformedImage {
 
 private fun Int.reverse(size: Int): Int = toString(2).padStart(size, '0').reversed().toInt(2)
 
-private fun partOne(m: List<List<TransformedImage>>): Long {
-    return m.first().first().id.toLong() * m.first().last().id * m.last().first().id * m.last().last().id
+private fun partOne(m: Grid<TransformedImage>): Long {
+    return m[0, 0]!!.id.toLong() * m[0, m.height - 1]!!.id * m[m.width - 1, 0]!!.id * m[m.width - 1, m.height - 1]!!.id
 }
 
 private enum class State {
     DOT, MONSTER, HASH
 }
 
-private fun partTwo(m: List<List<TransformedImage>>, monster: String): Int {
+private fun partTwo(m: Grid<TransformedImage>, monster: String): Int {
     // process the images
-    val processedImages: List<List<Image>> = m.map {
-        it.map {
-            it.applyTransform()
-                .addSpaceBorder()
-        // .cutoffEdges()
-        }
+    val processedImages: Grid<Image> = m.map {
+        it.applyTransform()
+          .cutoffEdges()
     }
 
-    processedImages.forEachIndexed { y, list ->
-        list.forEachIndexed { x, img ->
-            println("x=$x, y=$y, id=${img.id}")
-            println(img.image.joinToString("\n") {
-                it.joinToString("")
-            })
-        }
-    }
-
-    // stitch them together (-2 for border)
-    val imgSize = processedImages.first().first().image.size
-    val bigSize = m.size * imgSize
-    val image: ImageData = List(bigSize) { y ->
-        List(bigSize) { x ->
-            val img = processedImages[x / imgSize][y / imgSize]
-            val pixel = img.image[y % imgSize][x % imgSize]
-            pixel
-        }
+    // stitch them together
+    val imgSize = processedImages[0, 0]!!.image.width
+    val bigSize = m.width * imgSize
+    val image: ImageData = Grid.createGrid(bigSize, bigSize) { x, y ->
+        val img = processedImages[x / imgSize, y / imgSize]!!
+        val pixel = img.image[x % imgSize, y % imgSize]!!
+        pixel
     }
 
     val possibleImages = sequence {
@@ -172,87 +151,60 @@ private fun partTwo(m: List<List<TransformedImage>>, monster: String): Int {
     val state = possibleImages.toList().also {
         println("Trying ${it.size} images")
     }.map {
-        println("Trying ")
-        println(it.joinToString("\n") {
-            it.joinToString("")
-        })
         findSeaMonsters(bigSize, it, spec)
-    }.first {
-        // is there any monster found?
-        it.flatten().any { it == State.MONSTER }
-    }
+    }.firstOrNull {
+        // are there any monster found?
+        it.pointValues().any { it.second == State.MONSTER }
+    } ?: error("No monsters found!")
 
-    return state.flatten().count { it == State.HASH }
+    return state.pointValues().count { it.second == State.HASH }
 }
 
-@OptIn(ExperimentalStdlibApi::class)
-private fun Image.addSpaceBorder() : Image {
-    val size = image.size
-    return Image(
-        id,
-        buildList {
-            add(List(size + 2) { ' ' })
-            addAll(
-                image.map {
-                    buildList {
-                        add(' ')
-                        addAll(it)
-                        add(' ')
-                    }
-                }
-            )
-            add(List(size + 2) { ' ' })
-        }
-    )
-}
-
-@Suppress("UNCHECKED_CAST") // we check it
 private fun findSeaMonsters(
     size: Int,
     image: ImageData,
     spec: MonsterSpec
-): Array<Array<State>> {
-    val states: Array<Array<State?>> = Array(size) {
-        arrayOfNulls(size)
+): Grid<State> {
+    val states: Array<State?> = arrayOfNulls(size * size)
+    fun getState(x: Int, y: Int): State? = states[x + y * size]
+    fun setState(x: Int, y: Int, state: State) {
+        states[x + y * size] = state
     }
 
-    for (x in 0 until size) {
-        for (y in 0 until size) {
-            if (states[y][x] != null) continue // already done
+    for (y in 0 until size) {
+        for (x in 0 until size) {
+            if (getState(x, y) != null) continue // already done
 
-            when (image[y][x]) {
-                '.' -> states[y][x] = State.DOT
+            when (image[x, y]) {
+                '.' -> setState(x, y, State.DOT)
                 '#' -> {
                     // check if this is the start of monster
-                    val locations = spec.offsets.map { (dx, dy) ->
-                        (x + dx) to (y + dy)
-                    }
+                    val locations = spec.offsets.map { Point(x + it.x, y + it.y) }
                     if (locations.all { (lx, ly) ->
-                            image.getOrNull(ly)?.getOrNull(lx) == '#'
-                                    && states[ly][lx] == null
+                            image[lx, ly] == '#' && getState(lx, ly) == null
                         }) {
                         // monster!
-                        states[y][x] = State.MONSTER
+                        setState(x, y, State.MONSTER)
                         locations.forEach { (lx, ly) ->
-                            states[ly][lx] = State.MONSTER
+                            setState(lx, ly, State.MONSTER)
                         }
                     } else {
-                        states[y][x] = State.HASH
+                        setState(x, y, State.HASH)
                     }
                 }
             }
         }
     }
 
-    return states as Array<Array<State>>
+    @Suppress("UNCHECKED_CAST")
+    return Grid(size, size, states.asList() as List<State>)
 }
 
 private data class MonsterSpec(
-    val origin: Pair<Int, Int>,
-    val offsets : List<Pair<Int, Int>>
+    val offsets: List<Point>
 )
 
-private fun prepareMonster(monster: String) : MonsterSpec {
+private fun prepareMonster(monster: String): MonsterSpec {
 
     // first line has to have a '#'
     val lines = monster.lines()
@@ -261,16 +213,15 @@ private fun prepareMonster(monster: String) : MonsterSpec {
 
     // compute relative distances to each other
     val offsets = lines.flatMapIndexed { y: Int, s: String ->
-        s.mapIndexedNotNull{ x:Int, c : Char ->
-            if (y == 0 && x == start) null
-            else when (c) {
-                '#' -> (x - start) to y
+        s.mapIndexedNotNull { x: Int, c: Char ->
+            when (c) {
+                '#' -> Point(x - start, y)
                 else -> null
             }
         }
     }
 
-    return MonsterSpec(start to 0, offsets)
+    return MonsterSpec(offsets)
 }
 
 private fun TransformedImage.applyTransform(): Image {
@@ -285,63 +236,56 @@ private fun TransformedImage.applyTransform(): Image {
     )
 }
 
-private fun ImageData.flip(): ImageData = map { it.reversed() }
+private fun ImageData.flip(): ImageData = Grid.createGrid(width, height) { x, y ->
+    get(width - 1 - x, y)!!
+}
+
 private fun ImageData.rotate(count: Int): ImageData {
     if (count == 0) return this
 
     val base = rotate(count - 1)
-    val size = base.size
-    val rotated = base.map { it.toMutableList() }.toMutableList()
-    for (x in 0 until size) {
-        for (y in 0 until size) {
-            rotated[(size - 1) - x][y] = base[x][y]
-        }
+    return Grid.createGrid(base.width, base.height) { x, y ->
+        base[y, height - 1 - x]!!
     }
-    return rotated
 }
 
 private fun Image.cutoffEdges(): Image = Image(
     id,
-    image.drop(1).dropLast(1).map {
-        it.drop(1).dropLast(1)
-    }
+    Grid.createGrid(image.width - 2, image.height - 2) { x, y -> image[x + 1, y + 1]!! }
 )
 
-private fun assembleImage(images: List<Image>): List<List<TransformedImage>> {
+private fun assembleImage(images: List<Image>): Grid<TransformedImage> {
     fun buildMap(
-        mapSoFar: List<List<TransformedImage?>>,
+        mapSoFar: Grid<TransformedImage?>,
         imagesLeft: List<TransformedImage>
-    ): List<List<TransformedImage>>? {
+    ): Grid<TransformedImage>? {
         // find next location to do:
-        val target = mapSoFar.asSequence().map { ys ->
-            ys.indexOfFirst { it == null }
-        }.withIndex().firstOrNull {
-            it.value != -1
-        }
-        @Suppress("UNCHECKED_CAST") // check by the condition
-        if (target == null) return mapSoFar as List<List<TransformedImage>>
+        val target = mapSoFar.pointValues().firstOrNull { it.second == null }
 
-        val x = target.value
-        val y = target.index
+        @Suppress("UNCHECKED_CAST") // check by the condition
+        if (target == null) return mapSoFar as Grid<TransformedImage>
+
+        val x = target.first.x
+        val y = target.first.y
 
         // check the neighbours
         val actualOptions = imagesLeft.toMutableList()
-        mapSoFar.getOrNull(y - 1)?.getOrNull(x)?.let { img ->
+        mapSoFar[x, y - 1]?.let { img ->
             actualOptions.retainAll {
                 it.topEdge == img.bottomEdge
             }
         }
-        mapSoFar.getOrNull(y + 1)?.getOrNull(x)?.let { img ->
+        mapSoFar[x, y + 1]?.let { img ->
             actualOptions.retainAll {
                 it.bottomEdge == img.topEdge
             }
         }
-        mapSoFar.getOrNull(y)?.getOrNull(x - 1)?.let { img ->
+        mapSoFar[x - 1, y]?.let { img ->
             actualOptions.retainAll {
                 it.leftEdge == img.rightEdge
             }
         }
-        mapSoFar.getOrNull(y)?.getOrNull(x + 1)?.let { img ->
+        mapSoFar[x + 1, y]?.let { img ->
             actualOptions.retainAll {
                 it.rightEdge == img.leftEdge
             }
@@ -350,21 +294,52 @@ private fun assembleImage(images: List<Image>): List<List<TransformedImage>> {
         return actualOptions
             .asSequence()
             .mapNotNull { img ->
-                val newMap = mapSoFar.toMutableList().apply {
-                    this[y] = mapSoFar[y].toMutableList().apply {
-                        this[x] = img
-                    }
-                }
+                val newMap = mapSoFar.set(x, y, img)
                 val remaining = imagesLeft.filterNot { it.id == img.id }
                 buildMap(newMap, remaining)
             }.firstOrNull()
     }
 
     val sizeOfBigImage = sqrt(images.size.toFloat()).roundToInt()
-    val init: List<List<TransformedImage?>> = List(sizeOfBigImage) {
-        List(sizeOfBigImage) { null }
-    }
+    val init: Grid<TransformedImage?> = Grid.createGrid(sizeOfBigImage, sizeOfBigImage) { _, _ -> null }
 
     val allOptions = images.map(Image::toTransformed).flatMap { it.allPossible() }
     return buildMap(init, allOptions) ?: error("Failed to solve puzzle")
+}
+
+// some of the helper classes I have come to rely on
+
+data class Point(val x: Int, val y: Int)
+
+data class Grid<T>(
+    val width: Int,
+    val height: Int,
+    private val data: List<T>
+) {
+    companion object {
+        fun <T> createGrid(width: Int, height: Int, supplier: (Int, Int) -> T): Grid<T> =
+            Grid(width, height, (0 until height).flatMap { y -> (0 until width).map { x -> supplier(x, y) } })
+    }
+
+    private fun inBounds(x: Int, y: Int) = x in 0..width - 1 && y in 0 until height
+    operator fun get(x: Int, y: Int): T? = if (inBounds(x, y)) data[x + y * width] else null
+    fun set(x: Int, y: Int, t: T): Grid<T> = Grid(width, height, data.toMutableList().also {
+        it[x + y * width] = t
+    })
+
+    fun pointValues(): Sequence<Pair<Point, T>> = sequence {
+        (0 until height).forEach { y ->
+            (0 until width).forEach { x ->
+                @Suppress("UNCHECKED_CAST")
+                yield(Point(x, y) to get(x, y) as T)
+            }
+        }
+    }
+
+    fun topRow(): List<T> = (0 until width).map { x -> get(x, 0)!! }
+    fun botRow(): List<T> = (0 until width).map { x -> get(x, height - 1)!! }
+    fun leftCol(): List<T> = (0 until height).map { y -> get(0, y)!! }
+    fun rightCol(): List<T> = (0 until height).map { y -> get(width - 1, y)!! }
+
+    fun <R> map(f: (T) -> R): Grid<R> = Grid(width, height, data.map(f))
 }
